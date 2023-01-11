@@ -1,0 +1,33 @@
+[tool.poetry]
+name = "ethchange"
+version = "0.1.0"
+description = "Etherium exchange API for facilitation quick and secure transactions"
+authors = ["Ommar Shaikh <ommarshaikh20@gmail.com>"]
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = ">=3.11, <3.12"
+django = "^4.1.4"
+djangorestframework = "^3.14.0"
+django-filter = "^22.1"
+dynaconf = "^3.1.11"
+pillow = "^9.4.0"
+loguru = "^0.6.0"
+
+
+[tool.poetry.group.dev.dependencies]
+black = "^22.12.0"
+isort = "^5.11.4"
+pylint = "^2.15.10"
+nox = "^2022.11.21"
+pytest = "^7.2.0"
+coverage = { extras = ["toml"], version = "^7.0.5" }
+pytest-sugar = "^0.9.6"
+pytest-cases = "^3.6.13"
+pytest-django = "^4.5.2"
+pytest-mock = "^3.10.0"
+pytest-cov = "^4.0.0"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
