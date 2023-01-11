@@ -1,9 +1,10 @@
 [tool.poetry]
 name = "ethchange"
 version = "0.1.0"
-description = "Etherium exchange API for facilitation quick and secure transactions"
+description = "Etherium exchange API for facilitating quick and secure transactions"
 authors = ["Ommar Shaikh <ommarshaikh20@gmail.com>"]
 readme = "README.md"
+
 
 [tool.poetry.dependencies]
 python = ">=3.11, <3.12"
@@ -28,6 +29,11 @@ pytest-django = "^4.5.2"
 pytest-mock = "^3.10.0"
 pytest-cov = "^4.0.0"
 
+
 [build-system]
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
+
+
+[tool.poetry.scripts]
+runserver = "task:run_server"

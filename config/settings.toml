@@ -1,0 +1,8 @@
+[DEFAULT]
+DEBUG = true
+
+[DEVELOPMENT]
+DEBUG = true
+
+[PRODUCTION]
+DEBUG = true
