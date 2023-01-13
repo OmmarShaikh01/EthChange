@@ -3,7 +3,12 @@ Task Runner
 """
 from __future__ import annotations
 
+import argparse
 import os
+import shlex
+import subprocess
+import time
+from concurrent.futures import Executor, ProcessPoolExecutor
 from pathlib import PurePath
 from typing import Optional
 
@@ -11,11 +16,10 @@ BASE_DIR = PurePath(os.path.dirname(__file__))
 
 
 def execute_cmd(cmd: list, quite: bool = False):
-    cmd = " ".join(list(map(str, cmd)))
     if not quite:
-        print(f"Executing [{cmd}]")
+        print(f"Executing [{shlex.join(list(map(str, cmd)))}]")
 
-    exe = os.system(cmd)
+    exe = subprocess.call(list(map(str, cmd)))
 
     if not quite:
         print("Completed ...\n")
@@ -23,7 +27,17 @@ def execute_cmd(cmd: list, quite: bool = False):
     return exe
 
 
-def run_server(parser: Optional[argparse.Namespace] = None):
+def execute_cmd_background(executor: Executor, cmd: list, quite: bool = False):
+    if not quite:
+        print(f"Executing [{shlex.join(list(map(str, cmd)))}]")
+
+    executor.submit(subprocess.call, cmd)
+
+    if not quite:
+        print("Completed ...\n")
+
+
+def run_server(executor: Executor, parser: Optional[argparse.Namespace] = None):
     if parser is not None and parser.reformat:
         run_reformatter()
 
@@ -34,7 +48,7 @@ def run_server(parser: Optional[argparse.Namespace] = None):
     if parser is not None and parser.flush:
         flush_server()
 
-    execute_cmd([*common_commands, "runserver"])
+    execute_cmd_background(executor, [*common_commands, "runserver"])
 
 
 def flush_server(parser: Optional[argparse.Namespace] = None):
@@ -62,13 +76,30 @@ def run_reformatter(parser: Optional[argparse.Namespace] = None):
     execute_cmd([BASE_DIR / ".venv" / "Scripts" / "black.exe", "."])
 
 
-if __name__ == "__main__":
-    import argparse
-    import time
+def run_services(executor: Executor):
+    from tool import foundry_anvil, foundry_anvil_json
 
+    execute_cmd_background(
+        executor,
+        [
+            foundry_anvil,
+            "--accounts",
+            "10",
+            "--balance",
+            "100",
+            "--no-mining",
+            "--no-cors",
+            "--config-out",
+            foundry_anvil_json,
+        ],
+    )
+
+
+def main():
     t1 = time.time()
     parser = argparse.ArgumentParser()
     parser.add_argument("task", choices=["runserver", "reformat"])
+    parser.add_argument("--run-services", action="store_true")
 
     parser_runserver = parser.add_argument_group("runserver")
     parser_runserver.add_argument("--reformat", action="store_true")
@@ -80,12 +111,21 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
     try:
-        match args.task:
-            case "runserver":
-                run_server(args)
-            case "reformat":
-                run_reformatter()
+        with ProcessPoolExecutor() as pool_exe:
+            if args.run_services:
+                run_services(pool_exe)
+
+            match args.task:
+                case "runserver":
+                    run_server(pool_exe, args)
+                case "reformat":
+                    run_reformatter()
+
     except KeyboardInterrupt:
         print(f"Executed [{args.task}] in {round(time.time() - t1, 4)} Sec")
 
     os.chdir(original_dir)
+
+
+if __name__ == "__main__":
+    main()
