@@ -13,12 +13,18 @@ from concurrent.futures import Executor, ProcessPoolExecutor
 from pathlib import PurePath
 from typing import Optional
 
+from config import settings
+
 BASE_DIR = PurePath(os.path.dirname(__file__))
 
 
 def set_up_tasks():
     required_file = (
         (BASE_DIR / "volume"),
+        (BASE_DIR / "volume" / "influxdb"),
+        (BASE_DIR / "volume" / "influxdb" / "assets"),
+        (BASE_DIR / "volume" / "influxdb" / "bolt"),
+        (BASE_DIR / "volume" / "influxdb" / "engine"),
         (BASE_DIR / "volume" / "geth"),
         (BASE_DIR / "volume" / "geth" / "keystore"),
         (BASE_DIR / "volume" / "geth" / "clef"),
@@ -36,10 +42,11 @@ def set_up_tasks():
 
 
 def execute_cmd(cmd: list, quite: bool = False):
+    cmd = shlex.join(list(map(str, cmd))).replace("'", '"')
     if not quite:
-        print(f"Executing [{shlex.join(list(map(str, cmd)))}]")
+        print(f"Executing [{cmd}]")
 
-    exe = subprocess.call(list(map(str, cmd)))
+    exe = subprocess.call(cmd)
 
     if not quite:
         print("Completed ...\n")
@@ -49,9 +56,10 @@ def execute_cmd(cmd: list, quite: bool = False):
 
 def execute_cmd_background(executor: Executor, cmd: list, quite: bool = False, **kwargs):
     cmd = ["start", "/W", *cmd]
+    cmd = shlex.join(list(map(str, cmd))).replace("'", '"')
     if not quite:
-        print(f"Starting [{shlex.join(list(map(str, cmd)))}]")
-    executor.submit(subprocess.check_output, shlex.join(list(map(str, cmd))), shell=True, **kwargs)
+        print(f"Starting [{cmd}]")
+    executor.submit(subprocess.check_output, cmd, shell=True, **kwargs)
     time.sleep(2)
     if not quite:
         print("Completed ...\n")
@@ -77,16 +85,11 @@ def flush_server(parser: Optional[argparse.Namespace] = None):
     execute_cmd(
         [
             *common_commands,
-            "createsuperuser",
-            "--noinput",
-            "--name",
-            "admin_user",
-            "--email",
-            "admin_user@testmail.com",
-            "--phone",
-            "3214569870",
-            "--password",
-            "qwerty123456",
+            *("createsuperuser", "--noinput"),
+            *("--name", settings.admin_user_name),
+            *("--email", "admin_user@testmail.com"),
+            *("--phone", "3214569870"),
+            *("--password", settings.admin_user_password),
         ]
     )
 
@@ -97,7 +100,6 @@ def run_reformatter(parser: Optional[argparse.Namespace] = None):
 
 
 def service_geth(executor: Executor):
-    from config import settings
     from tool import geth_exe
 
     # geth
@@ -105,15 +107,69 @@ def service_geth(executor: Executor):
         executor,
         [
             geth_exe.as_posix(),
-            *("--goerli", "--pprof"),
+            *("--goerli", "--pprof", "--verbosity", 2),
             *("--keystore", (BASE_DIR / "volume" / "geth" / "keystore").as_posix()),
             *("--identity", "ethchange"),
             *("--datadir", (BASE_DIR / "volume" / "geth" / "ethereum").as_posix()),
             *("--ethash.dagdir", (BASE_DIR / "volume" / "geth" / "ethash").as_posix()),
             *("--http", "--http.addr", settings.node_addr, "--http.port", settings.node_port),
             *("--http.api", "eth,net,web3,personal"),
+            *("--metrics", "--metrics.influxdbv2"),
+            *("--metrics.influxdb.organization", "ethchange"),
+            *("--metrics.influxdb.token", settings.secret_key),
+            *("--metrics.influxdb.bucket", "ethchange_admin_bucket"),
+            *("--metrics.influxdb.endpoint", f"http://localhost:{settings.influx_port}"),
         ],
     )
+
+
+def service_influx_db(executor: Executor):
+    from tool import influx_cli_exe, influx_db_exe
+
+    execute_cmd_background(
+        executor,
+        [
+            influx_db_exe.as_posix(),
+            *("--assets-path", (BASE_DIR / "volume" / "influxdb" / "assets").as_posix()),
+            *("--bolt-path", (BASE_DIR / "volume" / "influxdb" / "bolt" / "influxd.bolt").as_posix()),
+            *("--engine-path", (BASE_DIR / "volume" / "influxdb" / "engine").as_posix()),
+            *("--http-bind-address", f":{settings.influx_port}"),
+            *("--instance-id", f":{settings.influx_port}"),
+            # *("--ui-disabled",),
+            "run",
+        ],
+    )
+
+    # influxdb setup
+    execute_cmd(
+        [
+            influx_cli_exe.as_posix(),
+            *("setup", "--force"),
+            *("--host", f"http://localhost:{settings.influx_port}"),
+            *("--org", "ethchange"),
+            *("--retention", 0),
+            *("--bucket", "ethchange_admin_bucket"),
+            *("--username", settings.admin_user_name),
+            *("--password", settings.admin_user_password),
+            *("--configs-path", (influx_db_exe.parent / "config.toml").as_posix()),
+            *("--token", settings.secret_key),
+        ]
+    )
+
+    print(
+        f"influx credentials\n"
+        f"host: {settings.influx_port}\n"
+        f"org: ethchange\n"
+        f"bucket: ethchange_admin_bucket\n"
+        f"username: {settings.admin_user_name}\n"
+        f"password: {settings.admin_user_password}\n"
+        f"token: {settings.secret_key}\n"
+    )
+
+
+def run_services(executor: Executor):
+    service_influx_db(executor)
+    service_geth(executor)
 
 
 def main():
@@ -136,7 +192,7 @@ def main():
 
         with ProcessPoolExecutor() as pool_exe:
             if args.run_services and not args.task == "runservices":
-                service_geth(pool_exe)
+                run_services(pool_exe)
 
             match args.task:
                 case "runserver":
@@ -144,7 +200,7 @@ def main():
                 case "reformat":
                     run_reformatter()
                 case "runservices":
-                    service_geth(pool_exe)
+                    run_services(pool_exe)
 
     except KeyboardInterrupt:
         exe_time = datetime.timedelta(seconds=round(time.time() - t1, 4))

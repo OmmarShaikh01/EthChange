@@ -67,6 +67,12 @@ class UserManager(ModelUserManager):
                 user.save(using=self._db)
                 return user
 
+    def remove_user(self, name: str) -> bool:
+        # password = make_password(password)
+        deleted = self.filter(name=name).delete()
+        logger.opt(lazy=True).debug(f"[{deleted}] Deleted User")
+        return bool(deleted[0])
+
     def create_user(self, name: str, password: str, phone: int, email: str, **extra_fields) -> Optional[UserModel]:
         extra_fields.setdefault("is_staff", False)
         extra_fields.setdefault("is_superuser", False)

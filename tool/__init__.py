@@ -21,3 +21,11 @@ geth_dir = validate(base_dir / "geth")
 geth_exe = validate(geth_dir / "geth.exe")
 clef_exe = validate(geth_dir / "clef.exe")
 clef_rules = validate(base_dir / "celf_rules.js")
+
+influx_db_dir = validate(base_dir / "influxdb")
+influx_db_exe = validate(influx_db_dir / "influxd.exe")
+influx_cli_exe = validate(influx_db_dir / "influx.exe")
+
+grafana_dir = validate(base_dir / "grafana")
+grafana_cli_exe = validate(grafana_dir / "grafana-cli.exe")
+grafana_server_exe = validate(grafana_dir / "grafana-server.exe")

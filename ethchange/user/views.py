@@ -88,7 +88,7 @@ def login(request: Request) -> Response:
             _login(request, user)
             user.save()
 
-        return Response({"message": "Success"}, status=status.HTTP_201_CREATED)
+        return Response({"message": "Success"}, status=status.HTTP_200_OK)
 
     return Response(status=status.HTTP_400_BAD_REQUEST)
 
@@ -120,6 +120,19 @@ class UserViewSet(viewsets.ModelViewSet):
         if user:
             _logout(request)
             return Response(status=status.HTTP_200_OK)
+        return Response(status=status.HTTP_400_BAD_REQUEST)
+
+    @action(basename="user", name="remove_user", methods=["POST"], detail=True)
+    def remove_user(self, request: Request, pk: Optional[str] = None) -> Response:
+        if "password" not in request.data.keys():
+            return Response(dict(message="Missing UserInfoAttribute [password]"), status=status.HTTP_400_BAD_REQUEST)
+
+        password = request.data["password"]
+        if authenticate(request, username=pk, password=password):
+            self.logout(request, pk)
+            data = UserModel.objects.remove_user(name=pk)
+            if data:
+                return Response(status=status.HTTP_200_OK)
         return Response(status=status.HTTP_400_BAD_REQUEST)
 
     @action(basename="user", name="lock_wallet", methods=["POST"], detail=True)
