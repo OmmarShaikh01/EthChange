@@ -12,14 +12,12 @@ def validate(path: Path):
     elif os.path.exists(path):
         return path
     else:
-        return ""
+        raise Exception("ValidationError")
 
 
 base_dir = Path(__file__).resolve().parent
 
-foundry_anvil = validate(base_dir / "foundry" / "anvil.exe")
-foundry_anvil_json = base_dir / "foundry" / "anvil.json"
-
-foundry_cast = validate(base_dir / "foundry" / "cast.exe")
-foundry_forge = validate(base_dir / "foundry" / "forge.exe")
-foundry_chisel = validate(base_dir / "foundry" / "chisel.exe")
+geth_dir = validate(base_dir / "geth")
+geth_exe = validate(geth_dir / "geth.exe")
+clef_exe = validate(geth_dir / "clef.exe")
+clef_rules = validate(base_dir / "celf_rules.js")

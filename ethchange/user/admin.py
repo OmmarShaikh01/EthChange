@@ -63,6 +63,7 @@ class UserModelAdmin(BaseUserAdmin):
         "email",
         "is_superuser",
         "is_staff",
+        "eth_account",
     )
 
     list_filter = (

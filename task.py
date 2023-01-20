@@ -4,6 +4,7 @@ Task Runner
 from __future__ import annotations
 
 import argparse
+import datetime
 import os
 import shlex
 import subprocess
@@ -13,6 +14,25 @@ from pathlib import PurePath
 from typing import Optional
 
 BASE_DIR = PurePath(os.path.dirname(__file__))
+
+
+def set_up_tasks():
+    required_file = (
+        (BASE_DIR / "volume"),
+        (BASE_DIR / "volume" / "geth"),
+        (BASE_DIR / "volume" / "geth" / "keystore"),
+        (BASE_DIR / "volume" / "geth" / "clef"),
+        (BASE_DIR / "volume" / "geth" / "clef.ipc"),
+        (BASE_DIR / "volume" / "geth" / "ethereum"),
+        (BASE_DIR / "volume" / "geth" / "ethash"),
+        (BASE_DIR / "volume" / "logs"),
+    )
+
+    for path in filter(lambda x: not os.path.exists(x), required_file):
+        if os.path.splitext(path)[1]:
+            open(path, "w", encoding="utf-8").close()
+        elif not os.path.splitext(path)[1]:
+            os.mkdir(path)
 
 
 def execute_cmd(cmd: list, quite: bool = False):
@@ -27,12 +47,12 @@ def execute_cmd(cmd: list, quite: bool = False):
     return exe
 
 
-def execute_cmd_background(executor: Executor, cmd: list, quite: bool = False):
+def execute_cmd_background(executor: Executor, cmd: list, quite: bool = False, **kwargs):
+    cmd = ["start", "/W", *cmd]
     if not quite:
-        print(f"Executing [{shlex.join(list(map(str, cmd)))}]")
-
-    executor.submit(subprocess.call, cmd)
-
+        print(f"Starting [{shlex.join(list(map(str, cmd)))}]")
+    executor.submit(subprocess.check_output, shlex.join(list(map(str, cmd))), shell=True, **kwargs)
+    time.sleep(2)
     if not quite:
         print("Completed ...\n")
 
@@ -41,7 +61,7 @@ def run_server(executor: Executor, parser: Optional[argparse.Namespace] = None):
     if parser is not None and parser.reformat:
         run_reformatter()
 
-    common_commands = [BASE_DIR / ".venv" / "Scripts" / "python.exe", "-m", "manage"]
+    common_commands = [(BASE_DIR / ".venv" / "Scripts" / "python.exe").as_posix(), "-m", "manage"]
     execute_cmd([*common_commands, "makemigrations", "--noinput", "--no-header"])
     execute_cmd([*common_commands, "migrate", "--run-syncdb", "--noinput"])
 
@@ -52,7 +72,7 @@ def run_server(executor: Executor, parser: Optional[argparse.Namespace] = None):
 
 
 def flush_server(parser: Optional[argparse.Namespace] = None):
-    common_commands = [BASE_DIR / ".venv" / "Scripts" / "python.exe", "-m", "manage"]
+    common_commands = [(BASE_DIR / ".venv" / "Scripts" / "python.exe").as_posix(), "-m", "manage"]
     execute_cmd([*common_commands, "flush", "--noinput"])
     execute_cmd(
         [
@@ -72,25 +92,26 @@ def flush_server(parser: Optional[argparse.Namespace] = None):
 
 
 def run_reformatter(parser: Optional[argparse.Namespace] = None):
-    execute_cmd([BASE_DIR / ".venv" / "Scripts" / "isort.exe", "."])
-    execute_cmd([BASE_DIR / ".venv" / "Scripts" / "black.exe", "."])
+    execute_cmd([(BASE_DIR / ".venv" / "Scripts" / "isort.exe").as_posix(), "."])
+    execute_cmd([(BASE_DIR / ".venv" / "Scripts" / "black.exe").as_posix(), "."])
 
 
-def run_services(executor: Executor):
-    from tool import foundry_anvil, foundry_anvil_json
+def service_geth(executor: Executor):
+    from config import settings
+    from tool import geth_exe
 
+    # geth
     execute_cmd_background(
         executor,
         [
-            foundry_anvil,
-            "--accounts",
-            "10",
-            "--balance",
-            "100",
-            "--no-mining",
-            "--no-cors",
-            "--config-out",
-            foundry_anvil_json,
+            geth_exe.as_posix(),
+            *("--goerli", "--pprof"),
+            *("--keystore", (BASE_DIR / "volume" / "geth" / "keystore").as_posix()),
+            *("--identity", "ethchange"),
+            *("--datadir", (BASE_DIR / "volume" / "geth" / "ethereum").as_posix()),
+            *("--ethash.dagdir", (BASE_DIR / "volume" / "geth" / "ethash").as_posix()),
+            *("--http", "--http.addr", settings.node_addr, "--http.port", settings.node_port),
+            *("--http.api", "eth,net,web3,personal"),
         ],
     )
 
@@ -98,7 +119,7 @@ def run_services(executor: Executor):
 def main():
     t1 = time.time()
     parser = argparse.ArgumentParser()
-    parser.add_argument("task", choices=["runserver", "reformat"])
+    parser.add_argument("task", choices=["runservices", "runserver", "reformat"])
     parser.add_argument("--run-services", action="store_true")
 
     parser_runserver = parser.add_argument_group("runserver")
@@ -107,24 +128,31 @@ def main():
 
     original_dir = os.getcwd()
     os.chdir(BASE_DIR)
-    os.system("cls")
 
     args = parser.parse_args()
+    # noinspection PyBroadException
     try:
+        set_up_tasks()
+
         with ProcessPoolExecutor() as pool_exe:
-            if args.run_services:
-                run_services(pool_exe)
+            if args.run_services and not args.task == "runservices":
+                service_geth(pool_exe)
 
             match args.task:
                 case "runserver":
                     run_server(pool_exe, args)
                 case "reformat":
                     run_reformatter()
+                case "runservices":
+                    service_geth(pool_exe)
 
     except KeyboardInterrupt:
-        print(f"Executed [{args.task}] in {round(time.time() - t1, 4)} Sec")
+        exe_time = datetime.timedelta(seconds=round(time.time() - t1, 4))
+        print(f"Executed [{args.task}] in {exe_time}")
 
-    os.chdir(original_dir)
+    except Exception as e:
+        os.chdir(original_dir)
+        raise e
 
 
 if __name__ == "__main__":

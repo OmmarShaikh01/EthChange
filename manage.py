@@ -28,7 +28,6 @@ def main():
         sink=(base_dir / "logs" / "ethchange.log"),
         level="SUCCESS" if not settings.debug else "TRACE",
     )
-    logger.success("Logger Configured")
 
     try:
         from django.core.management import execute_from_command_line
